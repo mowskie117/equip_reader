@@ -275,14 +275,40 @@ export default function App() {
                     <div className="stat-value mono">{tResult.df}</div>
                   </div>
                   <div className="stat-block">
-                    <div className="stat-label mono">p-value</div>
-                    <div className="stat-value mono accent">{tResult.p}</div>
+                    <div className="stat-label mono">p-value (one-tailed)</div>
+                    <div className="stat-value mono accent">{tResult.pDisplay}</div>
                   </div>
                 </div>
-                <div className={`verdict ${parseFloat(tResult.p) < 0.05 ? 'verdict-sig' : 'verdict-ns'}`}>
-                  {parseFloat(tResult.p) < 0.05
-                    ? `✓ STATISTICALLY SIGNIFICANT — p = ${tResult.p} < 0.05 — reject H₀`
-                    : `✗ NOT SIGNIFICANT — p = ${tResult.p} ≥ 0.05 — fail to reject H₀`
+
+                <div className="ci-section">
+                  <div className="ci-header mono">95% CONFIDENCE INTERVAL — x̄ ± t* · SE &nbsp;|&nbsp; t* = {tResult.tStar}</div>
+                  <div className="ci-row">
+                    <div className="ci-bound">
+                      <div className="stat-label mono">lower bound</div>
+                      <div className="stat-value mono">{tResult.ciLow}</div>
+                    </div>
+                    <div className="ci-bar-wrap">
+                      <div className="ci-bar">
+                        <div className="ci-range" />
+                        <div className={`ci-zero ${tResult.containsZero ? 'zero-inside' : 'zero-outside'}`}>0</div>
+                      </div>
+                      <div className="ci-label mono">
+                        {tResult.containsZero
+                          ? '⚠ zero is inside the interval'
+                          : '✓ zero is outside the interval'}
+                      </div>
+                    </div>
+                    <div className="ci-bound">
+                      <div className="stat-label mono">upper bound</div>
+                      <div className="stat-value mono">{tResult.ciHigh}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`verdict ${tResult.p < 0.05 ? 'verdict-sig' : 'verdict-ns'}`}>
+                  {tResult.p < 0.05
+                    ? `✓ STATISTICALLY SIGNIFICANT — p ${tResult.pDisplay} < 0.05 — reject H₀ — CI does not contain zero`
+                    : `✗ NOT SIGNIFICANT — p ${tResult.pDisplay} ≥ 0.05 — fail to reject H₀`
                   }
                 </div>
               </section>

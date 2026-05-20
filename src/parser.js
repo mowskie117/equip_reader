@@ -91,10 +91,86 @@ export function oneSampleTTest(differences) {
   const t = mean / se
   const df = n - 1
 
-  // Approximate one-tailed p-value using t-distribution
+  // Approximate one-tailed p-value
   const p = oneTailedPValue(t, df)
 
-  return { n, mean: mean.toFixed(2), variance: variance.toFixed(2), se: se.toFixed(2), t: t.toFixed(4), df, p: p.toFixed(4) }
+  // 95% CI: mean ± t*(0.025, df) * se
+  const tStar = tCritical(0.025, df)
+  const ciLow = mean - tStar * se
+  const ciHigh = mean + tStar * se
+  const containsZero = ciLow <= 0 && ciHigh >= 0
+
+  // Display p-value
+  let pDisplay
+  if (p < 0.0001) pDisplay = '< 0.0001'
+  else if (p > 0.9999) pDisplay = '> 0.9999'
+  else pDisplay = p.toFixed(4)
+
+  return {
+    n, 
+    mean: mean.toFixed(2), 
+    variance: variance.toFixed(2), 
+    se: se.toFixed(2), 
+    t: t.toFixed(4), 
+    df, 
+    p: p,
+    pDisplay,
+    tStar: tStar.toFixed(3),
+    ciLow: ciLow.toFixed(2),
+    ciHigh: ciHigh.toFixed(2),
+    containsZero,
+  }
+}
+
+// Approximate t critical value for two-tailed alpha using normal approximation
+// Good enough for df > 30
+function tCritical(alpha, df) {
+  // For df > 30, t* is close to z*
+  // Use iterative approximation
+  if (df >= 30) {
+    // Cornish-Fisher approximation
+    const z = normalQuantile(alpha)
+    const g1 = (z ** 3 + z) / (4 * df)
+    const g2 = (5 * z ** 5 + 16 * z ** 3 + 3 * z) / (96 * df ** 2)
+    return Math.abs(z + g1 + g2)
+  }
+  // For small df use a lookup
+  const table = {
+    1:12.706,2:4.303,3:3.182,4:2.776,5:2.571,
+    6:2.447,7:2.365,8:2.306,9:2.262,10:2.228,
+    15:2.131,20:2.086,25:2.060,29:2.045,30:2.042
+  }
+  return table[df] ?? 1.96
+}
+
+function normalQuantile(p) {
+  // Rational approximation for inverse normal CDF
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02,
+    -2.759285104469687e+02, 1.383577518672690e+02,
+    -3.066479806614716e+01, 2.506628277459239e+00]
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02,
+    -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01]
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01,
+    -2.400758277161838e+00, -2.549732539343734e+00,
+    4.374664141464968e+00, 2.938163982698783e+00]
+  const d = [7.784695709041462e-03, 3.224671290700398e-01,
+    2.445134137142996e+00, 3.754408661907416e+00]
+  const pLow = 0.02425, pHigh = 1 - pLow
+  let q
+  if (p < pLow) {
+    q = Math.sqrt(-2 * Math.log(p))
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+      ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+  } else if (p <= pHigh) {
+    q = p - 0.5
+    const r = q * q
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+      (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p))
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+      ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+  }
 }
 
 // Approximation of one-tailed p-value from t and df
