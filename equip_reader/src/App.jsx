@@ -1,0 +1,366 @@
+import { useState, useCallback, useRef } from 'react'
+import { parseEquipFile, computeAnalysis, oneSampleTTest } from './parser'
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
+import './App.css'
+
+const CHANNELS = ['s0', 's1', 's2', 's3']
+const CHANNEL_LABELS = { s0: 'CH0 (Red)', s1: 'CH1 (Green)', s2: 'CH2 (Blue)', s3: 'CH3 (Cyan)' }
+const CHANNEL_COLORS = { s0: '#ff4d4d', s1: '#44ff88', s2: '#4488ff', s3: '#cc88ff' }
+
+const DEFAULT_TOP = ['s0', 's1']
+const DEFAULT_BOTTOM = ['s2', 's3']
+
+export default function App() {
+  const [file, setFile] = useState(null)
+  const [parsing, setParsing] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [bins, setBins] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [tResult, setTResult] = useState(null)
+  const [topChannels, setTopChannels] = useState(DEFAULT_TOP)
+  const [bottomChannels, setBottomChannels] = useState(DEFAULT_BOTTOM)
+  const [dragging, setDragging] = useState(false)
+  const [error, setError] = useState(null)
+  const fileRef = useRef()
+
+  const processFile = useCallback(async (f) => {
+    setFile(f)
+    setParsing(true)
+    setProgress(0)
+    setError(null)
+    setBins(null)
+    setAnalysis(null)
+    setTResult(null)
+
+    try {
+      // Read in chunks to show progress
+      const text = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onprogress = (e) => {
+          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 60))
+        }
+        reader.onload = (e) => resolve(e.target.result)
+        reader.onerror = reject
+        reader.readAsText(f)
+      })
+
+      setProgress(70)
+      await new Promise(r => setTimeout(r, 10))
+
+      const parsed = parseEquipFile(text)
+      setProgress(90)
+      await new Promise(r => setTimeout(r, 10))
+
+      if (parsed.length === 0) {
+        setError('No valid ST/DS bin data found. Make sure this is a valid EQUIP .txt file.')
+        setParsing(false)
+        return
+      }
+
+      setBins(parsed)
+      runAnalysis(parsed, topChannels, bottomChannels)
+      setProgress(100)
+    } catch (e) {
+      setError('Failed to parse file: ' + e.message)
+    }
+
+    setParsing(false)
+  }, [topChannels, bottomChannels])
+
+  const runAnalysis = (b, top, bottom) => {
+    const analyzed = computeAnalysis(b, top, bottom)
+    setAnalysis(analyzed)
+    const diffs = analyzed.map(r => r.difference)
+    setTResult(oneSampleTTest(diffs))
+  }
+
+  const handleChannelToggle = (ch, side) => {
+    let newTop = [...topChannels]
+    let newBottom = [...bottomChannels]
+
+    if (side === 'top') {
+      if (newTop.includes(ch)) {
+        newTop = newTop.filter(c => c !== ch)
+      } else {
+        newTop.push(ch)
+        newBottom = newBottom.filter(c => c !== ch)
+      }
+    } else {
+      if (newBottom.includes(ch)) {
+        newBottom = newBottom.filter(c => c !== ch)
+      } else {
+        newBottom.push(ch)
+        newTop = newTop.filter(c => c !== ch)
+      }
+    }
+
+    setTopChannels(newTop)
+    setBottomChannels(newBottom)
+    if (bins) runAnalysis(bins, newTop, newBottom)
+  }
+
+  const onDrop = useCallback((e) => {
+    e.preventDefault()
+    setDragging(false)
+    const f = e.dataTransfer.files[0]
+    if (f) processFile(f)
+  }, [processFile])
+
+  const chartData = analysis?.map((row, i) => ({
+    name: row.timestamp.slice(11, 16),
+    top: row.topCount,
+    bottom: row.bottomCount,
+    diff: row.difference,
+    index: i,
+  })) ?? []
+
+  // Sample every N points for chart performance
+  const sampledChart = chartData.filter((_, i) => i % Math.max(1, Math.floor(chartData.length / 200)) === 0)
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-inner">
+          <div className="logo">
+            <span className="logo-icon">⬡</span>
+            <div>
+              <div className="logo-title">EQUIP READER</div>
+              <div className="logo-sub">QuarkNet Cosmic Ray Muon Analyzer</div>
+            </div>
+          </div>
+          <div className="header-meta mono">
+            Mounds View HS · Fermilab QuarkNet · 2026
+          </div>
+        </div>
+      </header>
+
+      <main className="main">
+        {/* Upload Zone */}
+        {!bins && (
+          <section
+            className={`dropzone ${dragging ? 'dragging' : ''} ${parsing ? 'parsing' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            onClick={() => !parsing && fileRef.current.click()}
+          >
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".txt"
+              style={{ display: 'none' }}
+              onChange={(e) => e.target.files[0] && processFile(e.target.files[0])}
+            />
+            {parsing ? (
+              <div className="parse-state">
+                <div className="spinner" />
+                <div className="parse-label mono">PARSING FILE — {progress}%</div>
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width: `${progress}%` }} />
+                </div>
+                <div className="parse-sub mono">{file?.name}</div>
+              </div>
+            ) : (
+              <div className="drop-content">
+                <div className="drop-icon">⬡</div>
+                <div className="drop-title">DROP EQUIP FILE HERE</div>
+                <div className="drop-sub mono">or click to browse · .txt files only</div>
+                {error && <div className="error-msg">{error}</div>}
+              </div>
+            )}
+          </section>
+        )}
+
+        {bins && (
+          <>
+            {/* File info bar */}
+            <div className="info-bar">
+              <div className="info-item">
+                <span className="info-label mono">FILE</span>
+                <span className="info-value mono">{file?.name}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-label mono">BINS</span>
+                <span className="info-value accent mono">{bins.length}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-label mono">DURATION</span>
+                <span className="info-value mono">{bins.length * 5} min</span>
+              </div>
+              <div className="info-item">
+                <span className="info-label mono">START</span>
+                <span className="info-value mono">{bins[0]?.timestamp}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-label mono">END</span>
+                <span className="info-value mono">{bins[bins.length - 1]?.timestamp}</span>
+              </div>
+              <button className="reset-btn" onClick={() => {
+                setBins(null); setAnalysis(null); setTResult(null); setFile(null); setError(null)
+              }}>
+                ← NEW FILE
+              </button>
+            </div>
+
+            {/* Channel Config */}
+            <section className="card">
+              <div className="card-header">
+                <span className="card-title">CHANNEL CONFIGURATION</span>
+                <span className="card-sub mono">assign channels to detector position</span>
+              </div>
+              <div className="channel-grid">
+                {CHANNELS.map(ch => (
+                  <div key={ch} className="channel-row">
+                    <div className="channel-label">
+                      <div className="ch-dot" style={{ background: CHANNEL_COLORS[ch] }} />
+                      <span className="mono">{CHANNEL_LABELS[ch]}</span>
+                    </div>
+                    <div className="channel-btns">
+                      <button
+                        className={`ch-btn ${topChannels.includes(ch) ? 'active-top' : ''}`}
+                        onClick={() => handleChannelToggle(ch, 'top')}
+                      >
+                        ABOVE LEAD
+                      </button>
+                      <button
+                        className={`ch-btn ${bottomChannels.includes(ch) ? 'active-bottom' : ''}`}
+                        onClick={() => handleChannelToggle(ch, 'bottom')}
+                      >
+                        BELOW LEAD
+                      </button>
+                      <button
+                        className={`ch-btn ${!topChannels.includes(ch) && !bottomChannels.includes(ch) ? 'active-none' : ''}`}
+                        onClick={() => {
+                          const newTop = topChannels.filter(c => c !== ch)
+                          const newBottom = bottomChannels.filter(c => c !== ch)
+                          setTopChannels(newTop)
+                          setBottomChannels(newBottom)
+                          if (bins) runAnalysis(bins, newTop, newBottom)
+                        }}
+                      >
+                        EXCLUDE
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* T-Test Result */}
+            {tResult && (
+              <section className="card ttest-card">
+                <div className="card-header">
+                  <span className="card-title">STATISTICAL ANALYSIS</span>
+                  <span className="card-sub mono">1-sample t-test · H₀: μ(diff) = 0 · one-tailed · α = 0.05</span>
+                </div>
+                <div className="ttest-grid">
+                  <div className="stat-block">
+                    <div className="stat-label mono">n (bins)</div>
+                    <div className="stat-value mono">{tResult.n}</div>
+                  </div>
+                  <div className="stat-block">
+                    <div className="stat-label mono">mean diff</div>
+                    <div className="stat-value mono">{tResult.mean}</div>
+                  </div>
+                  <div className="stat-block">
+                    <div className="stat-label mono">std error</div>
+                    <div className="stat-value mono">{tResult.se}</div>
+                  </div>
+                  <div className="stat-block">
+                    <div className="stat-label mono">t statistic</div>
+                    <div className="stat-value mono accent">{tResult.t}</div>
+                  </div>
+                  <div className="stat-block">
+                    <div className="stat-label mono">df</div>
+                    <div className="stat-value mono">{tResult.df}</div>
+                  </div>
+                  <div className="stat-block">
+                    <div className="stat-label mono">p-value</div>
+                    <div className="stat-value mono accent">{tResult.p}</div>
+                  </div>
+                </div>
+                <div className={`verdict ${parseFloat(tResult.p) < 0.05 ? 'verdict-sig' : 'verdict-ns'}`}>
+                  {parseFloat(tResult.p) < 0.05
+                    ? `✓ STATISTICALLY SIGNIFICANT — p = ${tResult.p} < 0.05 — reject H₀`
+                    : `✗ NOT SIGNIFICANT — p = ${tResult.p} ≥ 0.05 — fail to reject H₀`
+                  }
+                </div>
+              </section>
+            )}
+
+            {/* Chart */}
+            {analysis && (
+              <section className="card">
+                <div className="card-header">
+                  <span className="card-title">MUON COUNT RATES OVER TIME</span>
+                  <span className="card-sub mono">5-min bins · sampled for display</span>
+                </div>
+                <div className="chart-wrap">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={sampledChart} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                      <XAxis dataKey="name" stroke="#3a3a50" tick={{ fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 11 }} interval="preserveStartEnd" />
+                      <YAxis stroke="#3a3a50" tick={{ fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{ background: '#18181d', border: '1px solid #2a2a35', fontFamily: 'Share Tech Mono', fontSize: 12 }}
+                        labelStyle={{ color: '#e8e8f0' }}
+                      />
+                      <Legend wrapperStyle={{ fontFamily: 'Share Tech Mono', fontSize: 12 }} />
+                      <ReferenceLine y={0} stroke="#2a2a35" />
+                      <Line type="monotone" dataKey="top" stroke="#00ff88" dot={false} strokeWidth={1.5} name="Above Lead" />
+                      <Line type="monotone" dataKey="bottom" stroke="#00ccff" dot={false} strokeWidth={1.5} name="Below Lead" />
+                      <Line type="monotone" dataKey="diff" stroke="#ff6b35" dot={false} strokeWidth={1} name="Difference" strokeDasharray="4 2" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+            )}
+
+            {/* Data Table */}
+            {analysis && (
+              <section className="card">
+                <div className="card-header">
+                  <span className="card-title">BIN DATA</span>
+                  <span className="card-sub mono">showing first 100 bins</span>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table mono">
+                    <thead>
+                      <tr>
+                        <th>TIMESTAMP</th>
+                        <th>S0</th>
+                        <th>S1</th>
+                        <th>S2</th>
+                        <th>S3</th>
+                        <th>ABOVE</th>
+                        <th>BELOW</th>
+                        <th>DIFF</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analysis.slice(0, 100).map((row, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'row-even' : ''}>
+                          <td>{row.timestamp}</td>
+                          <td style={{ color: CHANNEL_COLORS.s0 }}>{row.s0.toLocaleString()}</td>
+                          <td style={{ color: CHANNEL_COLORS.s1 }}>{row.s1.toLocaleString()}</td>
+                          <td style={{ color: CHANNEL_COLORS.s2 }}>{row.s2.toLocaleString()}</td>
+                          <td style={{ color: CHANNEL_COLORS.s3 }}>{row.s3.toLocaleString()}</td>
+                          <td className="col-top">{row.topCount.toLocaleString()}</td>
+                          <td className="col-bottom">{row.bottomCount.toLocaleString()}</td>
+                          <td className="col-diff">{row.difference.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </main>
+
+      <footer className="footer mono">
+        EQUIP READER · QUARKNET COSMIC RAY MUON DETECTOR · MOUNDS VIEW HIGH SCHOOL
+      </footer>
+    </div>
+  )
+}
