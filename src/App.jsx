@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { parseEquipFile, computeAnalysis, oneSampleTTest } from './parser'
-import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
 import './App.css'
 
 const CHANNELS = ['s0', 's1', 's2', 's3']
@@ -413,6 +413,46 @@ export default function App() {
                 </div>
               </section>
             )}
+
+            {/* Histogram of difference scores */}
+            {analysis && (() => {
+              const diffs = analysis.map(r => r.difference)
+              const min = Math.min(...diffs)
+              const max = Math.max(...diffs)
+              const bins = 30
+              const binWidth = (max - min) / bins
+              const counts = Array(bins).fill(0)
+              diffs.forEach(d => {
+                const i = Math.min(Math.floor((d - min) / binWidth), bins - 1)
+                counts[i]++
+              })
+              const histData = counts.map((count, i) => ({
+                bin: (min + i * binWidth).toFixed(0),
+                count
+              }))
+              return (
+                <section className="card">
+                  <div className="card-header">
+                    <span className="card-title">DISTRIBUTION OF DIFFERENCE SCORES</span>
+                    <span className="card-sub mono">above − below · per 5-min bin · use for SOCS shape analysis</span>
+                  </div>
+                  <div className="chart-wrap">
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={histData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+                        <XAxis dataKey="bin" stroke="#3a3a50" tick={{ fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 10 }} interval={4} label={{ value: 'Difference (counts/bin)', position: 'insideBottom', offset: -10, fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 11 }} />
+                        <YAxis stroke="#3a3a50" tick={{ fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 11 }} />
+                        <Tooltip
+                          contentStyle={{ background: '#18181d', border: '1px solid #2a2a35', fontFamily: 'Share Tech Mono', fontSize: 12 }}
+                          formatter={(val, name) => [val, 'frequency']}
+                          labelFormatter={(label) => `diff ≈ ${label}`}
+                        />
+                        <Bar dataKey="count" fill="#ff6b35" opacity={0.8} name="frequency" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </section>
+              )
+            })()}
 
             {/* Data Table */}
             {analysis && (
