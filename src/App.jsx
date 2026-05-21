@@ -71,7 +71,18 @@ export default function App() {
     const analyzed = computeAnalysis(b, top, bottom)
     setAnalysis(analyzed)
     const diffs = analyzed.map(r => r.difference)
-    setTResult(oneSampleTTest(diffs))
+    const tops = analyzed.map(r => r.topCount)
+    const bottoms = analyzed.map(r => r.bottomCount)
+    const mean = arr => arr.reduce((a, b) => a + b, 0) / arr.length
+    const std = arr => { const m = mean(arr); return Math.sqrt(arr.reduce((s, x) => s + (x-m)**2, 0) / (arr.length-1)) }
+    const result = oneSampleTTest(diffs)
+    result.meanTop = mean(tops).toFixed(2)
+    result.meanBottom = mean(bottoms).toFixed(2)
+    result.stdTop = std(tops).toFixed(2)
+    result.stdBottom = std(bottoms).toFixed(2)
+    result.minDiff = Math.min(...diffs).toFixed(0)
+    result.maxDiff = Math.max(...diffs).toFixed(0)
+    setTResult(result)
   }
 
   const handleChannelToggle = (ch, side) => {
@@ -277,6 +288,35 @@ export default function App() {
                   <div className="stat-block">
                     <div className="stat-label mono">p-value (one-tailed)</div>
                     <div className="stat-value mono accent">{tResult.pDisplay}</div>
+                  </div>
+                </div>
+
+                {/* Console Output */}
+                <div className="console-wrap">
+                  <div className="console-header mono">▶ SUMMARY STATISTICS OUTPUT</div>
+                  <div className="console-body mono">
+                    <span className="console-comment"># detector counts per 5-min bin</span>{'\n'}
+                    <span className="console-key">mean_above_lead</span>    = <span className="console-val">{tResult.meanTop}</span>{'\n'}
+                    <span className="console-key">mean_below_lead</span>    = <span className="console-val">{tResult.meanBottom}</span>{'\n'}
+                    <span className="console-key">std_above_lead</span>     = <span className="console-val">{tResult.stdTop}</span>{'\n'}
+                    <span className="console-key">std_below_lead</span>     = <span className="console-val">{tResult.stdBottom}</span>{'\n'}
+                    {'\n'}
+                    <span className="console-comment"># difference scores (above - below)</span>{'\n'}
+                    <span className="console-key">mean_difference</span>    = <span className="console-val accent">{tResult.mean}</span>{'\n'}
+                    <span className="console-key">std_error</span>          = <span className="console-val">{tResult.se}</span>{'\n'}
+                    <span className="console-key">min_difference</span>     = <span className="console-val">{tResult.minDiff}</span>{'\n'}
+                    <span className="console-key">max_difference</span>     = <span className="console-val">{tResult.maxDiff}</span>{'\n'}
+                    <span className="console-key">n_bins</span>             = <span className="console-val">{tResult.n}</span>{'\n'}
+                    {'\n'}
+                    <span className="console-comment"># 1-sample t-test (H0: mean_diff = 0, one-tailed)</span>{'\n'}
+                    <span className="console-key">t_statistic</span>        = <span className="console-val accent">{tResult.t}</span>{'\n'}
+                    <span className="console-key">degrees_of_freedom</span> = <span className="console-val">{tResult.df}</span>{'\n'}
+                    <span className="console-key">p_value</span>            = <span className="console-val accent">{tResult.pDisplay}</span>{'\n'}
+                    {'\n'}
+                    <span className="console-comment"># 95% confidence interval</span>{'\n'}
+                    <span className="console-key">ci_lower</span>           = <span className="console-val">{tResult.ciLow}</span>{'\n'}
+                    <span className="console-key">ci_upper</span>           = <span className="console-val">{tResult.ciHigh}</span>{'\n'}
+                    <span className="console-key">contains_zero</span>      = <span className={`console-val ${tResult.containsZero ? 'warn' : 'accent'}`}>{tResult.containsZero ? 'TRUE ⚠' : 'FALSE ✓'}</span>
                   </div>
                 </div>
 

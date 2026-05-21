@@ -370,6 +370,53 @@
   color: var(--accent);
 }
 
+/* CONSOLE OUTPUT */
+.console-wrap {
+  margin: 0 1.5rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.console-header {
+  background: #0d0d10;
+  padding: 8px 16px;
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+}
+
+.console-body {
+  background: #0d0d10;
+  padding: 1rem 1.5rem;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--text-dim);
+}
+
+.console-comment {
+  color: var(--text-dimmer);
+}
+
+.console-key {
+  color: var(--accent2);
+}
+
+.console-val {
+  color: var(--text);
+}
+
+.console-val.accent {
+  color: var(--accent);
+}
+
+.console-val.warn {
+  color: var(--accent3);
+}
+
 /* CONFIDENCE INTERVAL */
 .ci-section {
   margin: 0 1.5rem 1.5rem;
