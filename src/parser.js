@@ -151,9 +151,6 @@ function twoTailedPValue(t, df) {
   return 2 * p
 }
 
- * H0: mean difference = 0
- * H1: mean difference > 0 (one-tailed)
- */
 export function oneSampleTTest(differences) {
   const n = differences.length
   if (n < 2) return null
