@@ -109,7 +109,8 @@ export function twoSampleTTest(arr1, arr2, oneTailed = false) {
   const m1 = mean(arr1), m2 = mean(arr2)
   const v1 = variance(arr1), v2 = variance(arr2)
   const se = Math.sqrt(v1/n1 + v2/n2)
-  const t = (m1 - m2) / se
+  // t = (period2 - period1) / se so positive t means period2 > period1 (lead removal increased counts)
+  const t = (m2 - m1) / se
 
   // Welch-Satterthwaite df
   const df = Math.floor(
@@ -131,16 +132,16 @@ export function twoSampleTTest(arr1, arr2, oneTailed = false) {
 
   return {
     n1, n2,
-    meanDiff: (m1 - m2).toFixed(2),
+    meanDiff: (m2 - m1).toFixed(2),
     se: se.toFixed(2),
     t: t.toFixed(4),
     df,
     p,
     pDisplay,
     tStar: tStar.toFixed(3),
-    ciLow: ciLow.toFixed(2),
-    ciHigh: ciHigh.toFixed(2),
-    containsZero,
+    ciLow: ((m2 - m1) - tStar * se).toFixed(2),
+    ciHigh: ((m2 - m1) + tStar * se).toFixed(2),
+    containsZero: ((m2 - m1) - tStar * se) <= 0 && ((m2 - m1) + tStar * se) >= 0,
     stats1: fiveNum(arr1),
     stats2: fiveNum(arr2),
   }

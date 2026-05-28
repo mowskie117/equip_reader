@@ -211,85 +211,118 @@ export default function App() {
             </div>
 
             {mode === 'timeperiod' && (
-              <section className="card">
-                <div className="card-header">
-                  <span className="card-title">TIME PERIOD COMPARISON</span>
-                  <span className="card-sub mono">single channel · split by cutoff bin · 2-sample t-test</span>
-                </div>
-                <div className="channel-grid">
-                  <div className="channel-row">
-                    <div className="channel-label mono">Channel:</div>
-                    <div className="channel-btns">
-                      {CHANNELS.map(ch => (
-                        <button key={ch}
-                          className={`ch-btn ${timePeriodChannel === ch ? 'active-top' : ''}`}
-                          onClick={() => {
-                            setTimePeriodChannel(ch)
-                            doRunTimePeriod(bins, ch, cutoffIndex)
-                          }}
-                        >
-                          {CHANNEL_LABELS[ch]}
-                        </button>
-                      ))}
-                    </div>
+              <div className="interdetector-container">
+                <section className="card">
+                  <div className="card-header">
+                    <span className="card-title">TIME PERIOD COMPARISON</span>
+                    <span className="card-sub mono">single channel · click chart to set cutoff · 2-sample t-test (period2 - period1)</span>
                   </div>
-                  <div className="channel-row">
-                    <div className="channel-label mono">Cutoff:</div>
-                    <div className="channel-btns" style={{ alignItems: 'center', gap: '1rem' }}>
-                      <input type="range" min={1} max={bins.length - 1} value={cutoff}
-                        onChange={e => {
-                          const idx = parseInt(e.target.value)
-                          setCutoffIndex(idx)
-                          doRunTimePeriod(bins, timePeriodChannel, idx)
-                        }}
-                        style={{ width: '300px', accentColor: 'var(--accent)' }}
-                      />
-                      <span className="mono" style={{ color: 'var(--accent)', fontSize: 13 }}>
-                        bin {cutoff} — {bins[cutoff] && bins[cutoff].timestamp}
+                  <div className="channel-grid">
+                    <div className="channel-row">
+                      <div className="channel-label mono">Channel:</div>
+                      <div className="channel-btns">
+                        {CHANNELS.map(ch => (
+                          <button key={ch}
+                            className={`ch-btn ${timePeriodChannel === ch ? 'active-top' : ''}`}
+                            onClick={() => {
+                              setTimePeriodChannel(ch)
+                              doRunTimePeriod(bins, ch, cutoffIndex)
+                            }}
+                          >
+                            {CHANNEL_LABELS[ch]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="channel-row">
+                      <span className="mono" style={{ fontSize: 11, color: 'var(--text-dimmer)' }}>
+                        {cutoffIndex !== null
+                          ? 'Cutoff: bin ' + cutoffIndex + ' — ' + (bins[cutoffIndex] && bins[cutoffIndex].timestamp) + ' | Period 1: 0 to ' + (cutoffIndex - 1) + ' | Period 2: ' + cutoffIndex + ' to ' + (bins.length - 1)
+                          : 'Click the chart below to set the cutoff point between periods'}
                       </span>
                     </div>
                   </div>
-                  <div className="channel-row">
-                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-dimmer)' }}>
-                      Period 1: bins 0 to {cutoff - 1} | Period 2: bins {cutoff} to {bins.length - 1}
-                    </span>
+                </section>
+
+                <section className="card">
+                  <div className="card-header">
+                    <span className="card-title">SINGLE CHANNEL COUNTS OVER TIME</span>
+                    <span className="card-sub mono">click anywhere on chart to set cutoff · green line = cutoff</span>
                   </div>
-                </div>
+                  <div className="chart-wrap">
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart
+                        data={bins.map((b, i) => ({ name: b.timestamp.slice(11, 16), count: b[timePeriodChannel] ?? 0, index: i }))}
+                        margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                        onClick={(e) => {
+                          if (e && e.activePayload && e.activePayload[0]) {
+                            const idx = e.activePayload[0].payload.index
+                            setCutoffIndex(idx)
+                            doRunTimePeriod(bins, timePeriodChannel, idx)
+                          }
+                        }}
+                        style={{ cursor: 'crosshair' }}
+                      >
+                        <XAxis dataKey="name" stroke="#3a3a50" tick={{ fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 11 }} interval="preserveStartEnd" />
+                        <YAxis stroke="#3a3a50" tick={{ fill: '#6b6b80', fontFamily: 'Share Tech Mono', fontSize: 11 }} />
+                        <Tooltip contentStyle={{ background: '#18181d', border: '1px solid #2a2a35', fontFamily: 'Share Tech Mono', fontSize: 12 }} />
+                        {cutoffIndex !== null && <ReferenceLine x={bins[cutoffIndex] && bins[cutoffIndex].timestamp.slice(11, 16)} stroke="#00ff88" strokeWidth={2} label={{ value: 'cutoff', fill: '#00ff88', fontFamily: 'Share Tech Mono', fontSize: 11 }} />}
+                        <Line type="monotone" dataKey="count" stroke={CHANNEL_COLORS[timePeriodChannel]} dot={false} strokeWidth={1.5} name="Count" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </section>
+
                 {tpResult && (
-                  <div style={{ padding: '0 1.5rem 1.5rem' }}>
-                    <div className="console-wrap">
-                      <div className="console-header mono">▶ 2-SAMPLE T-TEST — {CHANNEL_LABELS[timePeriodChannel]}</div>
-                      <div className="console-body mono">
-                        {'# PERIOD 1\n'}
-                        {'n          = '}<span className="console-val">{tpResult.stats1.n}</span>{'\n'}
-                        {'mean       = '}<span className="console-val">{tpResult.stats1.mean}</span>{'\n'}
-                        {'sd         = '}<span className="console-val">{tpResult.stats1.sd}</span>{'\n'}
-                        {'min/Q1/med/Q3/max = '}<span className="console-val">{tpResult.stats1.min} / {tpResult.stats1.q1} / {tpResult.stats1.median} / {tpResult.stats1.q3} / {tpResult.stats1.max}</span>{'\n\n'}
-                        {'# PERIOD 2\n'}
-                        {'n          = '}<span className="console-val">{tpResult.stats2.n}</span>{'\n'}
-                        {'mean       = '}<span className="console-val">{tpResult.stats2.mean}</span>{'\n'}
-                        {'sd         = '}<span className="console-val">{tpResult.stats2.sd}</span>{'\n'}
-                        {'min/Q1/med/Q3/max = '}<span className="console-val">{tpResult.stats2.min} / {tpResult.stats2.q1} / {tpResult.stats2.median} / {tpResult.stats2.q3} / {tpResult.stats2.max}</span>{'\n\n'}
-                        {'# 2-SAMPLE T-TEST\n'}
-                        {'mean_diff  = '}<span className="console-val accent">{tpResult.meanDiff}</span>{'\n'}
-                        {'se         = '}<span className="console-val">{tpResult.se}</span>{'\n'}
-                        {'t_stat     = '}<span className="console-val accent">{tpResult.t}</span>{'\n'}
-                        {'df         = '}<span className="console-val">{tpResult.df}</span>{'\n'}
-                        {'p_value    = '}<span className="console-val accent">{tpResult.pDisplay}</span>{'\n\n'}
-                        {'# 95% CI\n'}
-                        {'ci_lower   = '}<span className="console-val">{tpResult.ciLow}</span>{'\n'}
-                        {'ci_upper   = '}<span className="console-val">{tpResult.ciHigh}</span>{'\n'}
-                        {'contains_zero = '}<span className={tpResult.containsZero ? 'console-val warn' : 'console-val accent'}>{tpResult.containsZero ? 'TRUE' : 'FALSE'}</span>
+                  <section className="card ttest-card">
+                    <div className="card-header">
+                      <span className="card-title">STATISTICAL ANALYSIS</span>
+                      <span className="card-sub mono">2-sample t-test · H0: mu2 = mu1 · Ha: mu2 &gt; mu1 · one-tailed · alpha = 0.05</span>
+                    </div>
+                    <div className="ttest-grid">
+                      <StatBlock label="n1 (period 1)" value={tpResult.n1} />
+                      <StatBlock label="n2 (period 2)" value={tpResult.n2} />
+                      <StatBlock label="mean diff (p2-p1)" value={tpResult.meanDiff} />
+                      <StatBlock label="std error" value={tpResult.se} />
+                      <StatBlock label="t statistic" value={tpResult.t} accent />
+                      <StatBlock label="df" value={tpResult.df} />
+                      <StatBlock label="p-value (one-tailed)" value={tpResult.pDisplay} accent />
+                    </div>
+                    <div style={{ padding: '0 1.5rem 1.5rem' }}>
+                      <div className="console-wrap">
+                        <div className="console-header mono">▶ 2-SAMPLE T-TEST — {CHANNEL_LABELS[timePeriodChannel]}</div>
+                        <div className="console-body mono">
+                          {'# PERIOD 1 (lead directly above — lower counts)\n'}
+                          {'n       = '}<span className="console-val">{tpResult.stats1.n}</span>{'\n'}
+                          {'mean    = '}<span className="console-val">{tpResult.stats1.mean}</span>{'\n'}
+                          {'sd      = '}<span className="console-val">{tpResult.stats1.sd}</span>{'\n'}
+                          {'min/Q1/med/Q3/max = '}<span className="console-val">{tpResult.stats1.min} / {tpResult.stats1.q1} / {tpResult.stats1.median} / {tpResult.stats1.q3} / {tpResult.stats1.max}</span>{'\n\n'}
+                          {'# PERIOD 2 (lead not directly above — higher counts)\n'}
+                          {'n       = '}<span className="console-val">{tpResult.stats2.n}</span>{'\n'}
+                          {'mean    = '}<span className="console-val">{tpResult.stats2.mean}</span>{'\n'}
+                          {'sd      = '}<span className="console-val">{tpResult.stats2.sd}</span>{'\n'}
+                          {'min/Q1/med/Q3/max = '}<span className="console-val">{tpResult.stats2.min} / {tpResult.stats2.q1} / {tpResult.stats2.median} / {tpResult.stats2.q3} / {tpResult.stats2.max}</span>{'\n\n'}
+                          {'# 2-SAMPLE T-TEST (t = (mu2-mu1)/se)\n'}
+                          {'mean_diff (p2-p1) = '}<span className="console-val accent">{tpResult.meanDiff}</span>{'\n'}
+                          {'se        = '}<span className="console-val">{tpResult.se}</span>{'\n'}
+                          {'t_stat    = '}<span className="console-val accent">{tpResult.t}</span>{'\n'}
+                          {'df        = '}<span className="console-val">{tpResult.df}</span>{'\n'}
+                          {'p_value   = '}<span className="console-val accent">{tpResult.pDisplay}</span>{'\n\n'}
+                          {'# 95% CI (mu2 - mu1)\n'}
+                          {'ci_lower  = '}<span className="console-val">{tpResult.ciLow}</span>{'\n'}
+                          {'ci_upper  = '}<span className="console-val">{tpResult.ciHigh}</span>{'\n'}
+                          {'contains_zero = '}<span className={tpResult.containsZero ? 'console-val warn' : 'console-val accent'}>{tpResult.containsZero ? 'TRUE' : 'FALSE'}</span>
+                        </div>
+                      </div>
+                      <div className={tpResult.p < 0.05 ? 'verdict verdict-sig' : 'verdict verdict-ns'}>
+                        {tpResult.p < 0.05
+                          ? 'STATISTICALLY SIGNIFICANT — p ' + tpResult.pDisplay + ' < 0.05 — reject H0 — removing lead significantly increased count rate'
+                          : 'NOT SIGNIFICANT — p ' + tpResult.pDisplay + ' >= 0.05 — fail to reject H0'}
                       </div>
                     </div>
-                    <div className={tpResult.p < 0.05 ? 'verdict verdict-sig' : 'verdict verdict-ns'}>
-                      {tpResult.p < 0.05
-                        ? 'STATISTICALLY SIGNIFICANT — p ' + tpResult.pDisplay + ' < 0.05 — reject H0'
-                        : 'NOT SIGNIFICANT — p ' + tpResult.pDisplay + ' >= 0.05 — fail to reject H0'}
-                    </div>
-                  </div>
+                  </section>
                 )}
-              </section>
+              </div>
             )}
 
             {mode === 'interdetector' && (
