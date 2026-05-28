@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { parseEquipFile, computeAnalysis, oneSampleTTest } from './parser'
+import { parseEquipFile, computeAnalysis, oneSampleTTest, twoSampleTTest } from './parser'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
 import './App.css'
 
@@ -22,6 +22,12 @@ export default function App() {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState(null)
   const fileRef = useRef()
+
+  // Mode: 'interdetector' or 'timeperiod'
+  const [mode, setMode] = useState('interdetector')
+  const [timePeriodChannel, setTimePeriodChannel] = useState('s2')
+  const [cutoffIndex, setCutoffIndex] = useState(null)
+  const [tpResult, setTpResult] = useState(null)
 
   const processFile = useCallback(async (f) => {
     setFile(f)
@@ -101,7 +107,14 @@ export default function App() {
     setTResult(result)
   }
 
-  const handleChannelToggle = (ch, side) => {
+  const runTimePeriod = (b, ch, cutoff) => {
+    if (cutoff === null || cutoff === undefined) return
+    const period1 = b.slice(0, cutoff).map(bin => bin[ch] ?? 0)
+    const period2 = b.slice(cutoff).map(bin => bin[ch] ?? 0)
+    if (period1.length < 2 || period2.length < 2) return
+    const result = twoSampleTTest(period1, period2, true)
+    setTpResult(result)
+  }
     let newTop = [...topChannels]
     let newBottom = [...bottomChannels]
 
@@ -223,13 +236,131 @@ export default function App() {
                 <span className="info-value mono">{bins[bins.length - 1]?.timestamp}</span>
               </div>
               <button className="reset-btn" onClick={() => {
-                setBins(null); setAnalysis(null); setTResult(null); setFile(null); setError(null)
+                setBins(null); setAnalysis(null); setTResult(null); setFile(null); setError(null); setTpResult(null); setCutoffIndex(null)
               }}>
                 ← NEW FILE
               </button>
             </div>
 
-            {/* Channel Config */}
+            {/* Mode Toggle */}
+            <div className="mode-toggle">
+              <button
+                className={`mode-btn ${mode === 'interdetector' ? 'mode-active' : ''}`}
+                onClick={() => setMode('interdetector')}
+              >
+                ⬡ INTER-DETECTOR
+              </button>
+              <button
+                className={`mode-btn ${mode === 'timeperiod' ? 'mode-active' : ''}`}
+                onClick={() => setMode('timeperiod')}
+              >
+                ◈ TIME PERIOD
+              </button>
+            </div>
+
+            {/* Time Period Mode UI */}
+            {mode === 'timeperiod' && (
+              <section className="card">
+                <div className="card-header">
+                  <span className="card-title">TIME PERIOD COMPARISON</span>
+                  <span className="card-sub mono">single channel · split by cutoff bin · 2-sample t-test</span>
+                </div>
+                <div className="channel-grid">
+                  <div className="channel-row">
+                    <div className="channel-label mono">Channel to analyze:</div>
+                    <div className="channel-btns">
+                      {CHANNELS.map(ch => (
+                        <button
+                          key={ch}
+                          className={`ch-btn ${timePeriodChannel === ch ? 'active-top' : ''}`}
+                          onClick={() => {
+                            setTimePeriodChannel(ch)
+                            if (cutoffIndex !== null) runTimePeriod(bins, ch, cutoffIndex)
+                          }}
+                        >
+                          <span style={{ color: CHANNEL_COLORS[ch] }}>●</span> {CHANNEL_LABELS[ch]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="channel-row">
+                    <div className="channel-label mono">Cutoff bin index:</div>
+                    <div className="channel-btns" style={{ alignItems: 'center', gap: '1rem' }}>
+                      <input
+                        type="range"
+                        min={1}
+                        max={bins.length - 1}
+                        value={cutoffIndex ?? Math.floor(bins.length / 2)}
+                        onChange={e => {
+                          const idx = parseInt(e.target.value)
+                          setCutoffIndex(idx)
+                          runTimePeriod(bins, timePeriodChannel, idx)
+                        }}
+                        style={{ width: '300px', accentColor: 'var(--accent)' }}
+                      />
+                      <span className="mono" style={{ color: 'var(--accent)', fontSize: 13 }}>
+                        bin {cutoffIndex ?? Math.floor(bins.length / 2)} — {bins[cutoffIndex ?? Math.floor(bins.length / 2)]?.timestamp}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="channel-row">
+                    <div className="channel-label mono" style={{ fontSize: 11, color: 'var(--text-dimmer)' }}>
+                      Period 1: bins 0 → {(cutoffIndex ?? Math.floor(bins.length / 2)) - 1} &nbsp;|&nbsp; Period 2: bins {cutoffIndex ?? Math.floor(bins.length / 2)} → {bins.length - 1}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2-sample t-test result */}
+                {tpResult && (
+                  <>
+                    <div className="console-wrap" style={{ margin: '0 1.5rem 1.5rem' }}>
+                      <div className="console-header mono">▶ 2-SAMPLE T-TEST OUTPUT — {CHANNEL_LABELS[timePeriodChannel]}</div>
+                      <div className="console-body mono">
+                        <span className="console-comment">{'# ── PERIOD 1 (lead above) ───────────────────'}</span>{'\n'}
+                        <span className="console-key">n         </span> = <span className="console-val">{tpResult.stats1.n}</span>{'\n'}
+                        <span className="console-key">mean      </span> = <span className="console-val">{tpResult.stats1.mean}</span>{'\n'}
+                        <span className="console-key">sd        </span> = <span className="console-val">{tpResult.stats1.sd}</span>{'\n'}
+                        <span className="console-key">min       </span> = <span className="console-val">{tpResult.stats1.min}</span>{'\n'}
+                        <span className="console-key">Q1        </span> = <span className="console-val">{tpResult.stats1.q1}</span>{'\n'}
+                        <span className="console-key">median    </span> = <span className="console-val">{tpResult.stats1.median}</span>{'\n'}
+                        <span className="console-key">Q3        </span> = <span className="console-val">{tpResult.stats1.q3}</span>{'\n'}
+                        <span className="console-key">max       </span> = <span className="console-val">{tpResult.stats1.max}</span>{'\n'}
+                        {'\n'}
+                        <span className="console-comment">{'# ── PERIOD 2 (lead not directly above) ──────'}</span>{'\n'}
+                        <span className="console-key">n         </span> = <span className="console-val">{tpResult.stats2.n}</span>{'\n'}
+                        <span className="console-key">mean      </span> = <span className="console-val">{tpResult.stats2.mean}</span>{'\n'}
+                        <span className="console-key">sd        </span> = <span className="console-val">{tpResult.stats2.sd}</span>{'\n'}
+                        <span className="console-key">min       </span> = <span className="console-val">{tpResult.stats2.min}</span>{'\n'}
+                        <span className="console-key">Q1        </span> = <span className="console-val">{tpResult.stats2.q1}</span>{'\n'}
+                        <span className="console-key">median    </span> = <span className="console-val">{tpResult.stats2.median}</span>{'\n'}
+                        <span className="console-key">Q3        </span> = <span className="console-val">{tpResult.stats2.q3}</span>{'\n'}
+                        <span className="console-key">max       </span> = <span className="console-val">{tpResult.stats2.max}</span>{'\n'}
+                        {'\n'}
+                        <span className="console-comment">{'# ── 2-SAMPLE T-TEST (H0: mu1 = mu2) ────────'}</span>{'\n'}
+                        <span className="console-key">mean_diff </span> = <span className="console-val accent">{tpResult.meanDiff}</span>{'\n'}
+                        <span className="console-key">se        </span> = <span className="console-val">{tpResult.se}</span>{'\n'}
+                        <span className="console-key">t_stat    </span> = <span className="console-val accent">{tpResult.t}</span>{'\n'}
+                        <span className="console-key">df        </span> = <span className="console-val">{tpResult.df}</span>{'\n'}
+                        <span className="console-key">p_value   </span> = <span className="console-val accent">{tpResult.pDisplay}</span>{'\n'}
+                        {'\n'}
+                        <span className="console-comment">{'# ── 95% CONFIDENCE INTERVAL ─────────────────'}</span>{'\n'}
+                        <span className="console-key">ci_lower  </span> = <span className="console-val">{tpResult.ciLow}</span>{'\n'}
+                        <span className="console-key">ci_upper  </span> = <span className="console-val">{tpResult.ciHigh}</span>{'\n'}
+                        <span className="console-key">contains_zero</span> = <span className={`console-val ${tpResult.containsZero ? 'warn' : 'accent'}`}>{tpResult.containsZero ? 'TRUE ⚠' : 'FALSE ✓'}</span>
+                      </div>
+                    </div>
+                    <div className={`verdict ${tpResult.p < 0.05 ? 'verdict-sig' : 'verdict-ns'}`} style={{ margin: '0 1.5rem 1.5rem' }}>
+                      {tpResult.p < 0.05
+                        ? `✓ STATISTICALLY SIGNIFICANT — p ${tpResult.pDisplay} < 0.05 — reject H₀ — lead position significantly affects count rate`
+                        : `✗ NOT SIGNIFICANT — p ${tpResult.pDisplay} ≥ 0.05 — fail to reject H₀`
+                      }
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+
+            {mode === 'interdetector' && (<>
             <section className="card">
               <div className="card-header">
                 <span className="card-title">CHANNEL CONFIGURATION</span>
@@ -493,6 +624,7 @@ export default function App() {
                 </div>
               </section>
             )}
+            </>)}
           </>
         )}
       </main>

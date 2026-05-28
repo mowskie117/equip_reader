@@ -370,6 +370,36 @@
   color: var(--accent);
 }
 
+/* MODE TOGGLE */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dimmer);
+  padding: 10px 24px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+
+.mode-btn:hover {
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+}
+
+.mode-btn.mode-active {
+  background: rgba(0,255,136,0.08);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* CONSOLE OUTPUT */
 .console-wrap {
   margin: 0 1.5rem 1.5rem;

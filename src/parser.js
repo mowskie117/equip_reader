@@ -77,7 +77,80 @@ export function computeAnalysis(bins, topChannels, bottomChannels) {
 }
 
 /**
- * 1-sample t-test on differences against mu=0
+ * 2-sample t-test for difference in means between two independent groups
+ * H0: mu1 - mu2 = 0
+ * H1: mu1 - mu2 != 0 (two-tailed) or > 0 (one-tailed)
+ */
+export function twoSampleTTest(arr1, arr2, oneTailed = false) {
+  const n1 = arr1.length, n2 = arr2.length
+  if (n1 < 2 || n2 < 2) return null
+
+  const mean = arr => arr.reduce((a, b) => a + b, 0) / arr.length
+  const variance = arr => { const m = mean(arr); return arr.reduce((s, x) => s + (x-m)**2, 0) / (arr.length-1) }
+  const sorted = arr => [...arr].sort((a, b) => a - b)
+  const quantile = (arr, q) => {
+    const s = sorted(arr)
+    const pos = (s.length - 1) * q
+    const base = Math.floor(pos)
+    const rest = pos - base
+    return s[base + 1] !== undefined ? s[base] + rest * (s[base + 1] - s[base]) : s[base]
+  }
+  const fiveNum = arr => ({
+    min: Math.min(...arr).toFixed(2),
+    q1: quantile(arr, 0.25).toFixed(2),
+    median: quantile(arr, 0.5).toFixed(2),
+    q3: quantile(arr, 0.75).toFixed(2),
+    max: Math.max(...arr).toFixed(2),
+    mean: mean(arr).toFixed(2),
+    sd: Math.sqrt(variance(arr)).toFixed(2),
+    n: arr.length,
+  })
+
+  const m1 = mean(arr1), m2 = mean(arr2)
+  const v1 = variance(arr1), v2 = variance(arr2)
+  const se = Math.sqrt(v1/n1 + v2/n2)
+  const t = (m1 - m2) / se
+
+  // Welch-Satterthwaite df
+  const df = Math.floor(
+    Math.pow(v1/n1 + v2/n2, 2) /
+    (Math.pow(v1/n1, 2)/(n1-1) + Math.pow(v2/n2, 2)/(n2-1))
+  )
+
+  const p = oneTailed ? oneTailedPValue(t, df) : twoTailedPValue(t, df)
+
+  let pDisplay
+  if (p < 0.0001) pDisplay = '< 0.0001'
+  else if (p > 0.9999) pDisplay = '> 0.9999'
+  else pDisplay = p.toFixed(4)
+
+  const tStar = tCritical(0.025, df)
+  const ciLow = (m1 - m2) - tStar * se
+  const ciHigh = (m1 - m2) + tStar * se
+  const containsZero = ciLow <= 0 && ciHigh >= 0
+
+  return {
+    n1, n2,
+    meanDiff: (m1 - m2).toFixed(2),
+    se: se.toFixed(2),
+    t: t.toFixed(4),
+    df,
+    p,
+    pDisplay,
+    tStar: tStar.toFixed(3),
+    ciLow: ciLow.toFixed(2),
+    ciHigh: ciHigh.toFixed(2),
+    containsZero,
+    stats1: fiveNum(arr1),
+    stats2: fiveNum(arr2),
+  }
+}
+
+function twoTailedPValue(t, df) {
+  const p = oneTailedPValue(Math.abs(t), df)
+  return 2 * p
+}
+
  * H0: mean difference = 0
  * H1: mean difference > 0 (one-tailed)
  */
